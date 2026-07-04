@@ -1,0 +1,6 @@
+Fraud class,Precision,Recall,F1 score
+Unauthorised device use,0.57,0.88,0.69
+Impersonation,0.7,0.89,0.78
+Hall-level collusion,0.74,0.95,0.83
+Pre-knowledge / leaked content,0.3,0.82,0.44
+Remote relay / screen mirroring,0.11,0.61,0.19

@@ -1,0 +1,28 @@
+=== Table 1: Detection performance ===
+                                       Method  Precision  Recall  F1 score  AUROC  F1 std  AUROC std
+Answer-similarity index (Wollack/Q-SID style)       0.87    0.33      0.48   0.66   0.005      0.008
+                      Telemetry-only (BiLSTM)       0.39    0.29      0.33   0.64   0.016      0.009
+                     Vision-only (CNN-BiLSTM)       0.77    0.29      0.42   0.66   0.007      0.008
+                     Proposed fused framework       0.86    0.74      0.80   0.95   0.007      0.005
+
+=== Table 2: Per-class (fused) ===
+                    Fraud class  Precision  Recall  F1 score
+        Unauthorised device use       0.57    0.88      0.69
+                  Impersonation       0.70    0.89      0.78
+           Hall-level collusion       0.74    0.95      0.83
+ Pre-knowledge / leaked content       0.30    0.82      0.44
+Remote relay / screen mirroring       0.11    0.61      0.19
+
+=== Table 3: Ablation ===
+                        Configuration  F1 score Change
+Full framework (all three modalities)      0.74      -
+               Without vision encoder      0.56  -0.18
+            Without telemetry encoder      0.64   -0.1
+      Without graph attention encoder      0.51  -0.23
+
+=== Latency and fairness ===
+Latency ms per session: 0.004 std 0.001
+Fairness FPR, accessibility sub-population: 0.6752
+Fairness FPR, general clean population: 0.0152
+
+Seeds: [42, 43, 44, 45, 46]  Sessions per seed: 30000

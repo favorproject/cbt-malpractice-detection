@@ -1,0 +1,5 @@
+Configuration,F1 score,Change
+Full framework (all three modalities),0.74,-
+Without vision encoder,0.56,-0.18
+Without telemetry encoder,0.64,-0.1
+Without graph attention encoder,0.51,-0.23
