@@ -1,20 +1,34 @@
 """
 Synthetic CBT malpractice benchmark generator.
 
-Builds a labelled table of candidate-sessions. Each session carries three
-groups of features that stand in for the three real signals in the paper:
+Builds a labelled table with ONE ROW PER CANDIDATE-SESSION. Each session carries
+three groups of SESSION-LEVEL SUMMARY features standing in for the three signals
+the paper specifies:
 
-  vision features    simulated per-candidate suspicion signals
+  vision features    simulated per-candidate suspicion summaries
                      (gaze deviation, head-pose spread, face count, object flag)
-  telemetry features simulated pacing and keystroke signals
+  telemetry features simulated pacing and keystroke summaries
                      (mean response time, response-time variance, answer changes,
-                      inter-click latency)
-  graph features     simulated hall-level collusion signals
+                      mean inter-click latency)
+  graph features     simulated hall-level collusion summaries
                      (shared-answer overlap, adjacency block overlap, neighbour count)
 
-The vision signals are simulated features, not real image processing. This is a
-proof-of-concept benchmark, calibrated to public WAEC, NECO and JAMB disclosures
-for 2024 and 2025. It does not use real candidate data.
+Read this before drawing conclusions from the data:
+
+  * There is NO per-item sequence in this file or in the CSV it writes. The four
+    telemetry columns are session-level summaries of the three per-item features
+    the paper specifies (response time contributes both a mean and a variance).
+  * There is NO standardisation step. Features are drawn already on a bounded
+    [0, 1] scale and clipped by _clip01. The within-session z-scoring described
+    in the paper's Telemetry encoder subsection is a specification for a deployed
+    implementation on real telemetry. It is not executed anywhere here.
+  * The vision signals are simulated features, not image processing. No frame,
+    no face detector, no CNN.
+  * The graph features are scalar summaries. No answer matrix and no graph object
+    are constructed.
+
+This is a proof-of-concept benchmark calibrated to public WAEC, NECO and JAMB
+disclosures for 2024 and 2025. It uses no real candidate data.
 
 Fraud prevalence is set slightly above WAEC's disclosed 9.75 percent rate, for a
 combined injected prevalence of 11.5 percent across five fraud classes.
