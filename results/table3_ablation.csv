@@ -1,5 +1,5 @@
-Configuration,F1 score,Change
-Full framework (all three modalities),0.74,-
-Without vision encoder,0.56,-0.18
-Without telemetry encoder,0.64,-0.1
-Without graph attention encoder,0.51,-0.23
+Configuration,F1 (default 0.5 threshold),Change (default),F1 (F1-optimal threshold),Change (F1-optimal)
+Full framework (all three feature groups),0.74,-,0.8,-
+Without vision feature group,0.56,-0.18,0.62,-0.18
+Without telemetry feature group,0.64,-0.1,0.71,-0.09
+Without graph feature group,0.51,-0.23,0.57,-0.22

@@ -1,0 +1,5 @@
+Quantity,Mean,Std,Note
+"Amortised batch scoring, ms per session",0.0038,0.0009,"whole test split scored in one call, divided by session count"
+"Single-session scoring latency, ms per session",1.2153,0.1112,"one session per call, mean over 200 calls, includes per-call overhead"
+"False-positive rate, accessibility sub-population",0.6752,0.0989,"clean sessions with slow irregular pacing and reduced gaze stability, at the F1-optimal threshold"
+"False-positive rate, general clean population",0.0152,0.0029,"same threshold, general clean test population"

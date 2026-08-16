@@ -1,5 +1,5 @@
 Method,Precision,Recall,F1 score,AUROC,F1 std,AUROC std
 Answer-similarity index (Wollack/Q-SID style),0.87,0.33,0.48,0.66,0.005,0.008
-Telemetry-only (BiLSTM),0.39,0.29,0.33,0.64,0.016,0.009
-Vision-only (CNN-BiLSTM),0.77,0.29,0.42,0.66,0.007,0.008
+Telemetry-only (feature stand-in),0.39,0.29,0.33,0.64,0.016,0.009
+Vision-only (feature stand-in),0.77,0.29,0.42,0.66,0.007,0.008
 Proposed fused framework,0.86,0.74,0.8,0.95,0.007,0.005
