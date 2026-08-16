@@ -32,10 +32,13 @@ FRAUD_CLASSES = [
     "unauthorised_device", "remote_relay",
 ]
 METHODS = ["answer_similarity", "telemetry_only", "vision_only", "fused"]
+# Baselines are feature-group stand-ins, not the deep encoders the paper
+# specifies. These labels are written into the result CSVs, so they must not
+# name an architecture that this code does not run.
 METHOD_LABELS = {
     "answer_similarity": "Answer-similarity index (Wollack/Q-SID style)",
-    "telemetry_only": "Telemetry-only (BiLSTM)",
-    "vision_only": "Vision-only (CNN-BiLSTM)",
+    "telemetry_only": "Telemetry-only (feature stand-in)",
+    "vision_only": "Vision-only (feature stand-in)",
     "fused": "Proposed fused framework",
 }
 
@@ -65,7 +68,7 @@ def run_seed(seed, n_sessions):
         np.arange(len(df)), test_size=0.20, random_state=seed, stratify=strata
     )
 
-    out = {"detection": {}, "per_class": None, "ablation": {}}
+    out = {"detection": {}, "per_class": None, "ablation": {}, "ablation_f1opt": {}}
 
     # ---- detection: each method, binary fraud vs clean ----
     for method in METHODS:
@@ -103,21 +106,46 @@ def run_seed(seed, n_sessions):
         "no_telemetry": [c for c in FUSED_COLS if not c.startswith("tel_")],
         "no_graph": [c for c in FUSED_COLS if not c.startswith("gph_")],
     }
+    # Two decision rules are reported for every configuration.
+    #   default   the classifier's built-in 0.5 rule
+    #   f1_opt    the F1-optimal threshold, the same rule used for Table 1
+    # Reporting both removes the apparent inconsistency between the fused F1 in
+    # Table 1 and the full-framework F1 in the ablation table.
+    yt_bin = y_bin.iloc[test_idx]
     for name, cols in ablation_sets.items():
         clf = make_classifier(seed)
         clf.fit(df.iloc[train_idx][cols], y_bin.iloc[train_idx])
-        pred = clf.predict(df.iloc[test_idx][cols])
-        out["ablation"][name] = f1_score(y_bin.iloc[test_idx], pred, zero_division=0)
+        proba = clf.predict_proba(df.iloc[test_idx][cols])[:, 1]
+        pred_default = (proba >= 0.5).astype(int)
+        thr_opt = best_threshold(yt_bin.values, proba)
+        pred_opt = (proba >= thr_opt).astype(int)
+        out["ablation"][name] = f1_score(yt_bin, pred_default, zero_division=0)
+        out["ablation_f1opt"][name] = f1_score(yt_bin, pred_opt, zero_division=0)
 
-    # ---- latency: per-session scoring time of the fused model ----
+    # ---- scoring cost of the fused model ----
+    # Two distinct quantities, reported separately because they are not the same
+    # thing and the paper must not present one as the other.
+    #   batch      whole test split scored in one call, divided by the number of
+    #              sessions. This is amortised throughput, the realistic figure
+    #              for screening a hall in bulk.
+    #   single     one session scored on its own, averaged over repeats. This is
+    #              true per-session latency and includes per-call overhead.
     import time
     clf_lat = make_classifier(seed)
     clf_lat.fit(df.iloc[train_idx][FUSED_COLS], y_bin.iloc[train_idx])
     Xte = df.iloc[test_idx][FUSED_COLS]
+
     t0 = time.perf_counter()
     _ = clf_lat.predict_proba(Xte)
     elapsed = time.perf_counter() - t0
-    out["latency_ms_per_session"] = 1000.0 * elapsed / len(Xte)
+    out["batch_ms_per_session"] = 1000.0 * elapsed / len(Xte)
+
+    n_single = 200
+    singles = Xte.iloc[:n_single]
+    t0 = time.perf_counter()
+    for r in range(n_single):
+        _ = clf_lat.predict_proba(singles.iloc[[r]])
+    out["single_ms_per_session"] = 1000.0 * (time.perf_counter() - t0) / n_single
 
     # ---- fairness: false-positive rate on a clean accessibility sub-population ----
     # Build clean sessions with slow, irregular pacing and reduced gaze stability,
@@ -152,7 +180,7 @@ def run_seed(seed, n_sessions):
 
 def aggregate(results):
     """Mean and std across seeds."""
-    agg = {"detection": {}, "per_class": {}, "ablation": {}}
+    agg = {"detection": {}, "per_class": {}, "ablation": {}, "ablation_f1opt": {}}
 
     for method in METHODS:
         for metric in ["precision", "recall", "f1", "auroc"]:
@@ -167,10 +195,16 @@ def aggregate(results):
     for name in ["full", "no_vision", "no_telemetry", "no_graph"]:
         vals = [r["ablation"][name] for r in results]
         agg["ablation"][name] = (np.mean(vals), np.std(vals))
+        vals_opt = [r["ablation_f1opt"][name] for r in results]
+        agg["ablation_f1opt"][name] = (np.mean(vals_opt), np.std(vals_opt))
 
-    agg["latency"] = (
-        np.mean([r["latency_ms_per_session"] for r in results]),
-        np.std([r["latency_ms_per_session"] for r in results]),
+    agg["batch_latency"] = (
+        np.mean([r["batch_ms_per_session"] for r in results]),
+        np.std([r["batch_ms_per_session"] for r in results]),
+    )
+    agg["single_latency"] = (
+        np.mean([r["single_ms_per_session"] for r in results]),
+        np.std([r["single_ms_per_session"] for r in results]),
     )
     agg["fairness_access"] = (
         np.mean([r["fairness_fpr_access"] for r in results]),
@@ -231,16 +265,45 @@ def main():
     t2 = pd.DataFrame(rows)
     t2.to_csv(os.path.join(args.outdir, "table2_per_class.csv"), index=False)
 
-    # ----- Table 3: ablation -----
-    full_f1 = agg["ablation"]["full"][0]
-    rows = [
-        {"Configuration": "Full framework (all three modalities)", "F1 score": round(full_f1, 2), "Change": "-"},
-        {"Configuration": "Without vision encoder", "F1 score": round(agg["ablation"]["no_vision"][0], 2), "Change": round(agg["ablation"]["no_vision"][0] - full_f1, 2)},
-        {"Configuration": "Without telemetry encoder", "F1 score": round(agg["ablation"]["no_telemetry"][0], 2), "Change": round(agg["ablation"]["no_telemetry"][0] - full_f1, 2)},
-        {"Configuration": "Without graph attention encoder", "F1 score": round(agg["ablation"]["no_graph"][0], 2), "Change": round(agg["ablation"]["no_graph"][0] - full_f1, 2)},
+    # ----- Table 3: ablation, reported at both decision rules -----
+    full_def = agg["ablation"]["full"][0]
+    full_opt = agg["ablation_f1opt"]["full"][0]
+    ab_names = [
+        ("full", "Full framework (all three feature groups)"),
+        ("no_vision", "Without vision feature group"),
+        ("no_telemetry", "Without telemetry feature group"),
+        ("no_graph", "Without graph feature group"),
     ]
+    rows = []
+    for key, label in ab_names:
+        d = agg["ablation"][key][0]
+        o = agg["ablation_f1opt"][key][0]
+        rows.append({
+            "Configuration": label,
+            "F1 (default 0.5 threshold)": round(d, 2),
+            "Change (default)": "-" if key == "full" else round(d - full_def, 2),
+            "F1 (F1-optimal threshold)": round(o, 2),
+            "Change (F1-optimal)": "-" if key == "full" else round(o - full_opt, 2),
+        })
     t3 = pd.DataFrame(rows)
     t3.to_csv(os.path.join(args.outdir, "table3_ablation.csv"), index=False)
+
+    # ----- Table 4: latency and fairness, written to disk not just printed -----
+    t4 = pd.DataFrame([
+        {"Quantity": "Amortised batch scoring, ms per session",
+         "Mean": round(agg["batch_latency"][0], 4), "Std": round(agg["batch_latency"][1], 4),
+         "Note": "whole test split scored in one call, divided by session count"},
+        {"Quantity": "Single-session scoring latency, ms per session",
+         "Mean": round(agg["single_latency"][0], 4), "Std": round(agg["single_latency"][1], 4),
+         "Note": "one session per call, mean over 200 calls, includes per-call overhead"},
+        {"Quantity": "False-positive rate, accessibility sub-population",
+         "Mean": round(agg["fairness_access"][0], 4), "Std": round(agg["fairness_access"][1], 4),
+         "Note": "clean sessions with slow irregular pacing and reduced gaze stability, at the F1-optimal threshold"},
+        {"Quantity": "False-positive rate, general clean population",
+         "Mean": round(agg["fairness_general"][0], 4), "Std": round(agg["fairness_general"][1], 4),
+         "Note": "same threshold, general clean test population"},
+    ])
+    t4.to_csv(os.path.join(args.outdir, "table4_latency_fairness.csv"), index=False)
 
     # ----- raw per-seed detection F1 and AUROC, unaggregated -----
     raw = []
@@ -260,12 +323,10 @@ def main():
     print(t1.to_string(index=False))
     print("\n=== Table 2: Per-class (fused) ===")
     print(t2.to_string(index=False))
-    print("\n=== Table 3: Ablation ===")
+    print("\n=== Table 3: Ablation (both decision rules) ===")
     print(t3.to_string(index=False))
-    print("\n=== Latency and fairness ===")
-    print("Latency ms per session:", round(agg["latency"][0], 3), "std", round(agg["latency"][1], 3))
-    print("Fairness FPR, accessibility sub-population:", round(agg["fairness_access"][0], 4))
-    print("Fairness FPR, general clean population:", round(agg["fairness_general"][0], 4))
+    print("\n=== Table 4: Latency and fairness ===")
+    print(t4.to_string(index=False))
     print("\nSeeds:", args.seeds, " Sessions per seed:", args.n)
 
 

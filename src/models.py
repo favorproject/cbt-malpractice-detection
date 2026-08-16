@@ -1,13 +1,23 @@
 """
-Encoders, fusion classifier, and baselines.
+Feature groups, fusion classifier, and baselines.
 
-The paper describes deep encoders (CNN for vision, BiLSTM for telemetry,
-graph attention for collusion). This environment has no GPU and no deep
-learning framework, so the encoders are implemented as feature groups fed
-into gradient-boosted classifiers. This is a proof-of-concept substitute
-for the deep architecture, on synthetic data, consistent with the paper's
-stated scope. The fusion model sees all three feature groups. Each baseline
+The paper SPECIFIES deep encoders (CNN for vision, BiLSTM over the per-item
+telemetry sequence, graph attention over the hall answer graph). NONE of them
+is implemented here.
+
+What runs in this file is a gradient-boosted classifier over three groups of
+session-level summary features. There is no convolutional network, no
+recurrent network, no graph attention layer, and no item sequence anywhere in
+this repository. The fusion model sees all three feature groups. Each baseline
 sees only its own group.
+
+This substitution is deliberate and is the proof-of-concept scope stated in the
+paper: it tests whether fusing three signal groups separates simulated
+malpractice better than any single group, on a CPU, in minutes. It does not
+test the deep architecture and does not measure real-world accuracy.
+
+Baseline names below say "feature stand-in" for this reason. Do not relabel
+them with encoder names.
 """
 
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -21,7 +31,7 @@ FUSED_COLS = VISION_COLS + TELEMETRY_COLS + GRAPH_COLS
 
 def make_classifier(seed):
     """A gradient-boosted classifier. class_weight balances the rare fraud classes,
-    standing in for the focal loss used in the deep version."""
+    standing in for the focal loss specified for the deep version."""
     return HistGradientBoostingClassifier(
         max_iter=200,
         learning_rate=0.1,
